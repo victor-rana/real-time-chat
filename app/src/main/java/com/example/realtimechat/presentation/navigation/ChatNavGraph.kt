@@ -5,8 +5,8 @@ import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import com.example.realtimechat.presentation.ui.AuthScreen
-import com.example.realtimechat.presentation.ui.ChatListScreen
 import com.example.realtimechat.presentation.ui.ChatScreen
+import com.example.realtimechat.presentation.ui.chatlist.ChatListScreen
 import com.example.realtimechat.presentation.ui.home.HomeScreen
 import com.google.firebase.auth.FirebaseAuth
 
@@ -47,7 +47,7 @@ fun ChatNavGraph(
 
         composable(Screen.ChatList.route) {
             ChatListScreen(
-                onUserClick = { selectedUser ->
+                onChatClick = { selectedUser ->
                     selectedUser.uid.let { uid ->
                         navController.navigate("${Screen.Chat.route}/$uid")
                     }

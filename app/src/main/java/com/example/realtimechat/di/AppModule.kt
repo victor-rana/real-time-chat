@@ -4,6 +4,8 @@ import com.example.realtimechat.data.repository.AuthRepositoryImpl
 import com.example.realtimechat.data.repository.ChatRepositoryImpl
 import com.example.realtimechat.data.repository.FirestoreRepository
 import com.example.realtimechat.data.repository.MessageRepositoryImpl
+import com.example.realtimechat.data.source.local.LocalMessageDataSource
+import com.example.realtimechat.data.source.local.LocalMessageDataSourceImpl
 import com.example.realtimechat.data.source.remote.FirestoreMessageDataSource
 import com.example.realtimechat.data.source.remote.FirestoreMessageDataSourceImpl
 import com.example.realtimechat.domain.repository.AuthRepository
@@ -41,14 +43,16 @@ object AppModule {
     @Singleton
     fun provideFirestoreMessageDataSource(
         firestore: FirebaseFirestore,
-        storage: FirebaseStorage
-    ): FirestoreMessageDataSource = FirestoreMessageDataSourceImpl(firestore, storage)
+        storage: FirebaseStorage,
+        localDataSource: LocalMessageDataSourceImpl
+    ): FirestoreMessageDataSource = FirestoreMessageDataSourceImpl(firestore, storage, localDataSource)
 
     @Provides
     @Singleton
     fun provideMessageRepository(
-        remoteDataSource: FirestoreMessageDataSource
-    ): MessageRepository = MessageRepositoryImpl(remoteDataSource)
+        remoteDataSource: FirestoreMessageDataSource,
+        localDataSource: LocalMessageDataSource
+    ): MessageRepository = MessageRepositoryImpl(remoteDataSource, localDataSource)
 
     @Provides
     @Singleton

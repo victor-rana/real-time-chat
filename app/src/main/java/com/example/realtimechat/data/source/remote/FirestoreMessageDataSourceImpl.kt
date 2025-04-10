@@ -1,23 +1,28 @@
 package com.example.realtimechat.data.source.remote
 
+import com.example.realtimechat.data.mapper.toEntity
 import com.example.realtimechat.data.model.Conversation
 import com.example.realtimechat.data.model.Message
 import com.example.realtimechat.data.model.MessageStatus
 import com.example.realtimechat.data.model.MessageType
+import com.example.realtimechat.data.source.local.LocalMessageDataSourceImpl
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.firestore.Query
 import com.google.firebase.storage.FirebaseStorage
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.awaitClose
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.callbackFlow
-import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.tasks.await
 import java.util.UUID
 import javax.inject.Inject
 
 class FirestoreMessageDataSourceImpl @Inject constructor(
     private val firestore: FirebaseFirestore,
-    private val storage: FirebaseStorage
+    private val storage: FirebaseStorage,
+    private val localDataSource: LocalMessageDataSourceImpl
 ) : FirestoreMessageDataSource {
 
     override fun getMessages(currentUserId: String, otherUserId: String): Flow<List<Message>> = callbackFlow {
@@ -34,11 +39,18 @@ class FirestoreMessageDataSourceImpl @Inject constructor(
                 }
 
                 val messages = snapshot.documents.mapNotNull { it.toObject(Message::class.java) }
+
+                // Save to local DB
+                CoroutineScope(Dispatchers.IO).launch {
+                    localDataSource.saveMessages(messages.map { it.toEntity(chatId) })
+                }
+
                 trySend(messages)
             }
 
         awaitClose { listener.remove() }
     }
+
 
     override suspend fun sendMessage(message: Message) {
         val chatId = generateChatId(message.senderId, message.receiverId)
@@ -150,32 +162,39 @@ class FirestoreMessageDataSourceImpl @Inject constructor(
             .id
     }
 
-    override fun getRecentConversations(userId: String): Flow<List<Conversation>> = flow {
-        val snapshot = firestore.collection("chats")
-            .whereArrayContains("participants", userId) // Assuming participants field contains all userIds in a chat
-            .get()
-            .await()
+    override fun getRecentConversations(userId: String): Flow<List<Conversation>> = callbackFlow {
+        val listener = firestore.collection("chats")
+            .orderBy("last_message.timestamp", Query.Direction.DESCENDING)
+            .addSnapshotListener { snapshot, error ->
+                if (error != null) {
+                    close(error)
+                    return@addSnapshotListener
+                }
 
-        val conversations = snapshot.documents.mapNotNull { doc ->
-            val chatId = doc.id
-            val messages = firestore.collection("chats")
-                .document(chatId)
-                .collection("messages")
-                .orderBy("timestamp")
-                .get()
-                .await()
-                .documents
-                .mapNotNull { it.toObject(Message::class.java) }
+                val conversations = snapshot?.documents?.mapNotNull { doc ->
+                    val lastMessageMap = doc.get("last_message") as? Map<*, *> ?: return@mapNotNull null
+                    val senderId = doc.id.split("_").firstOrNull()
+                    val receiverId = doc.id.split("_").lastOrNull()
+                    if (senderId == null || receiverId == null) return@mapNotNull null
+                    if (senderId != userId && receiverId != userId) return@mapNotNull null
 
-            if (messages.isNotEmpty()) {
-                val lastMessage = messages.last()
-                val participants = doc.get("participants") as? List<String> ?: listOf()
-                Conversation(chatId, lastMessage, participants)
-            } else {
-                null
+                    Conversation(
+                        chatId = doc.id,
+                        lastMessage = Message(
+                            messageId = "",
+                            senderId = senderId,
+                            receiverId = receiverId,
+                            content = lastMessageMap["content"] as? String ?: "",
+                            timestamp = (lastMessageMap["timestamp"] as? Number)?.toLong() ?: 0L
+                        ),
+                        participants = listOf(senderId, receiverId)
+                    )
+                } ?: emptyList()
+
+                trySend(conversations)
             }
-        }
 
-        emit(conversations)
+        awaitClose { listener.remove() }
     }
+
 }

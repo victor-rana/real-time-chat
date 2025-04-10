@@ -21,8 +21,7 @@ class ChatViewModel @Inject constructor(
     private val getMessagesUseCase: GetMessagesUseCase,
     private val sendMessageUseCase: SendMessageUseCase,
     private val uploadImageMessageUseCase: UploadImageAndSendMessageUseCase,
-    private val chatStatusUseCase: ChatStatusUseCase,
-    private val getRecentConversationsUseCase: GetRecentConversationsUseCase
+    private val chatStatusUseCase: ChatStatusUseCase
 ) : ViewModel() {
 
     private val _messages = MutableStateFlow<List<Message>>(emptyList())
@@ -30,18 +29,6 @@ class ChatViewModel @Inject constructor(
 
     private val _isOtherUserTyping = MutableStateFlow(false)
     val isOtherUserTyping: StateFlow<Boolean> = _isOtherUserTyping
-
-    // StateFlow to hold the conversations list
-    private val _conversations = MutableStateFlow<List<Conversation>>(emptyList())
-    val conversations: StateFlow<List<Conversation>> = _conversations
-
-    // StateFlow for loading state
-    private val _isLoading = MutableStateFlow(false)
-    val isLoading: StateFlow<Boolean> = _isLoading
-
-    // StateFlow for error messages
-    private val _errorMessage = MutableStateFlow<String?>(null)
-    val errorMessage: StateFlow<String?> = _errorMessage
 
     fun loadMessages(currentUserId: String, otherUserId: String) {
         viewModelScope.launch {
@@ -59,20 +46,6 @@ class ChatViewModel @Inject constructor(
                 }
         }
     }
-
-//    fun getRecentConversations(userId: String) {
-//        viewModelScope.launch {
-//            _isLoading.value = true
-//            try {
-//                val result = getRecentConversationsUseCase(userId)
-//                _conversations.value = result
-//            } catch (e: Exception) {
-//                _errorMessage.value = "Failed to load conversations: ${e.message}"
-//            } finally {
-//                _isLoading.value = false
-//            }
-//        }
-//    }
 
     fun sendMessage(message: Message) {
         viewModelScope.launch {

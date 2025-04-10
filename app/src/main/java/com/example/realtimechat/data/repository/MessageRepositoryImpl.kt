@@ -1,25 +1,43 @@
 package com.example.realtimechat.data.repository
 
+import com.example.realtimechat.data.mapper.toEntity
+import com.example.realtimechat.data.mapper.toMessage
 import com.example.realtimechat.data.model.Conversation
 import com.example.realtimechat.data.model.Message
 import com.example.realtimechat.data.model.MessageType
+import com.example.realtimechat.data.source.local.LocalMessageDataSource
 import com.example.realtimechat.data.source.remote.FirestoreMessageDataSource
 import com.example.realtimechat.domain.repository.MessageRepository
+import com.example.realtimechat.utils.generateChatId
 import com.google.firebase.firestore.FirebaseFirestore
 import com.google.firebase.storage.FirebaseStorage
 import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.tasks.await
 import java.util.UUID
 import javax.inject.Inject
 
 class MessageRepositoryImpl @Inject constructor(
-    private val remoteDataSource: FirestoreMessageDataSource
+    private val remoteDataSource: FirestoreMessageDataSource,
+    private val localDataSource: LocalMessageDataSource
 ) : MessageRepository {
 
-    override fun getMessages(currentUserId: String, otherUserId: String): Flow<List<Message>> {
-        return remoteDataSource.getMessages(currentUserId, otherUserId)
+    override fun getMessages(currentUserId: String, otherUserId: String): Flow<List<Message>> = flow {
+        val chatId = generateChatId(currentUserId, otherUserId)
+
+        // Emit local messages first (cached ones)
+        localDataSource.getMessages(chatId).collect { localMessages ->
+            emit(localMessages.map { it.toMessage() })
+        }
+
+        // Fetch latest from remote and cache them
+        remoteDataSource.getMessages(currentUserId, otherUserId).collect { remoteMessages ->
+            localDataSource.saveMessages(remoteMessages.map { it.toEntity(chatId) })
+            emit(remoteMessages) // emit fresh ones
+        }
     }
+
+
 
     override suspend fun sendMessage(message: Message) {
         remoteDataSource.sendMessage(message)
@@ -79,14 +97,6 @@ class MessageRepositoryImpl @Inject constructor(
 
     override fun getRecentConversations(userId: String): Flow<List<Conversation>> {
         return remoteDataSource.getRecentConversations(userId)
-//            .map { messages ->
-//                // Group messages by chatId and build a conversation object
-//                messages.groupBy { it.chatId }.map { (chatId, messages) ->
-//                    val lastMessage = messages.last() // Get the last message from the group
-//                    val participants = messages.flatMap { listOf(it.lastMessage.senderId, it.lastMessage.receiverId) }.distinct()
-//                    Conversation(chatId, lastMessage, participants)
-//                }
-//            }
     }
 
 }
